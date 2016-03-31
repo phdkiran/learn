@@ -1,0 +1,143 @@
+---
+title: "Machine Learning Exercise"
+author: "Kiran Ramineni"
+date: "Monday, March 28, 2016"
+output: html_document
+---
+
+In this project, your goal is be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and quantify the data set into actionable factors. Use existing data to build a model and predict new set of data.
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Training data
+Import training data from the website and use csv reader to save the content as a data frame.
+```{r cache=TRUE}
+library(caret)
+library(rattle)
+
+setwd("~/learn")
+set.seed(1000)
+if(!file.exists("training.csv")){
+  download.file(url='https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', destfile = 'training.csv', mode='w')
+}
+training = read.csv(file='training.csv', sep = ',', na.strings=c("NA", ""))
+#View(training)
+dim(training)
+```
+## Test data
+Import test data from the website and use csv reader to save the content as a data frame.
+```{r cache=TRUE}
+if(!file.exists("testing.csv")){
+download.file(url='https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', destfile = 'testing.csv', mode='w')
+}
+testing = read.csv(file='./testing.csv', sep = ',', na.strings=c("NA", ""))
+#View(testing)
+dim(testing)
+```
+
+## What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Here is the classification for **classe** variable
+1 exactly according to the specification (Class A) 
+2 throwing the elbows to the front (Class B) 
+3 lifting the dumbbell only halfway (Class C) 
+4 lowering the dumbbell only halfway (Class D) 
+5 throwing the hips to the front (Class E)
+
+## Preprocess
+First remove the columns with most of the values as NA's. We can use colSums function to find the total rows that have NA's more than 10K since our total rows are 13,500.
+```{r  warning=FALSE, cache=TRUE}
+total_cols_before = ncol(training)
+training = training[colSums(!is.na(training)) > 10000]
+```
+
+There are two many columns with unrelated data like NA's. Lets run nonZeroVar function to identify no impact variables and remove them from our analyis.
+
+```{r  warning=FALSE, cache=TRUE}
+nearZeroVar(x=training, saveMetrics = TRUE)
+training = training[,-nearZeroVar(training)]
+dim(training)
+total_cols_after = ncol(training)
+```
+
+We have reduced total columns for processing from `r total_cols_before ` to `r total_cols_after `.
+
+## Split Data 
+Divide the training set to two subsets. 70% data retained for original training test and 30% for subset for test.
+
+```{r  warning=FALSE, cache=TRUE}
+library(caret)
+partitionIndex = createDataPartition(y=training$classe, p = 0.7, list=FALSE)
+training_data = training[partitionIndex, ]
+test_data = training[-partitionIndex, ]
+```
+
+
+## Model
+Lets build the model for prediction using knn method. We have a bunch of input parameters effecting the outcome of classe variable. We need to use principal component analysis method to pre process the data and find the most useful parameters. Also, use cross validation technique to get the model right.
+
+Let us create models based on nearest neighbor (knn), linear modeling (glm), random forest (rf) and decision tree (rpart). And measure the accuracy for each model.
+
+```{r  warning=FALSE, cache=TRUE}
+model_knn <- train(method = 'knn', data = training_data, classe ~ ., preProcess = c("pca", "center", "scale"), trControl = trainControl(method ="cv", number = 10, allowParallel = TRUE) )
+```
+
+```{r  warning=FALSE, cache=TRUE}
+model_rf <- train(method = 'rf', data = training_data, classe ~ ., preProcess = c("pca", "center", "scale"), trControl = trainControl(method ="cv", number = 10, allowParallel = TRUE) )
+```
+
+```{r  warning=FALSE, cache=TRUE}
+model_tree <- train(method = 'rpart', data = training_data, classe ~ ., preProcess = c("pca", "center", "scale"), trControl = trainControl(method ="cv", number = 10, allowParallel = TRUE) )
+```
+
+We can see how our models fared among each other by checking the cross validation results.
+```{r cache=TRUE}
+model_knn$results
+model_rf$results
+model_tree$results
+```
+
+As it is evident from the above results, both knn and rf methods are much superior to rpart decision tree model. We have pretty close to 100% accuracy from knn and rf. Let us apply our built models to test data set we saved before and conclude the results.
+
+## Build models
+```{r cache=TRUE}
+predict_knn = predict(model_knn, test_data)
+predict_rf = predict(model_rf, test_data)
+predict_rpart = predict(model_tree, test_data)
+```
+
+## Evaluate models
+Let us evaluate our models with confusion matrix with the original test set results
+```{r  cache=TRUE}
+confusionMatrix(predict_knn, test_data$classe)
+confusionMatrix(predict_rf, test_data$classe)
+confusionMatrix(predict_rpart, test_data$classe)
+```
+
+## Out of sample error
+Sample error is 1- accuracy for the given model.
+```{r cache=TRUE}
+error_knn = 1 - confusionMatrix(predict_knn, test_data$classe)$overall[1]
+error_rf = 1 - confusionMatrix(predict_rf, test_data$classe)$overall[1]
+```
+Error % for rf model is `r error_rf` and knn model is `r error_knn`
+
+## Choose the best model
+From the confusion matrix summary, **Random forest** method is the clear winner with over 99% accuracy.
+
+## Final predictions 
+Let us predict the original test set with RF method:
+```{r cache=TRUE}
+predict(model_rf, testing)
+```
+
